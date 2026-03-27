@@ -9,6 +9,10 @@ import (
 	"github.com/richardlehane/mscfb"
 )
 
+// maxStreamSize is the maximum number of bytes read from a single MAPI stream.
+// Prevents memory exhaustion from maliciously oversized streams in crafted MSG files.
+const maxStreamSize = 50 * 1024 * 1024 // 50 MiB
+
 // document holds all MAPI properties extracted from an MSG OLE2 compound file,
 // organized by scope: root (message), recipients, and attachments.
 type document struct {
@@ -43,7 +47,7 @@ func loadDocument(data []byte) (*document, error) {
 			continue
 		}
 
-		raw, err := io.ReadAll(entry)
+		raw, err := io.ReadAll(io.LimitReader(entry, maxStreamSize))
 		if err != nil {
 			continue
 		}

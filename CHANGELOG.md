@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-03-27
+
+### Security
+
+- Added per-stream memory cap (`maxStreamSize = 50 MiB`) using `io.LimitReader`
+  when reading MAPI streams from OLE2 compound files, preventing memory exhaustion
+  from maliciously oversized streams in crafted MSG files.
+
+
 ## [0.1.0] - 2026-03-27
 
 ### Added
@@ -22,4 +31,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `--pretty` flag for human-readable JSON output.
 
 
+[0.1.1]: https://github.com/nlink-jp/lite-msg/releases/tag/v0.1.1
 [0.1.0]: https://github.com/nlink-jp/lite-msg/releases/tag/v0.1.0
