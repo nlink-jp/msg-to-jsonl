@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/nlink-jp/lite-msg/internal/parser"
+	"github.com/nlink-jp/msg-to-jsonl/internal/parser"
 )
 
 var version = "dev"
@@ -18,7 +18,7 @@ func main() {
 	versionFlag := flag.Bool("version", false, "print version and exit")
 	pretty := flag.Bool("pretty", false, "pretty-print JSON (default: JSONL)")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: lite-msg [flags] [file.msg | dir/ ...]\n\n")
+		fmt.Fprintf(os.Stderr, "Usage: msg-to-jsonl [flags] [file.msg | dir/ ...]\n\n")
 		fmt.Fprintf(os.Stderr, "Parses Outlook MSG files and outputs structured JSONL to stdout.\n")
 		fmt.Fprintf(os.Stderr, "Reads from stdin when no arguments are given.\n\n")
 		fmt.Fprintf(os.Stderr, "Flags:\n")

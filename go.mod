@@ -1,4 +1,4 @@
-module github.com/nlink-jp/lite-msg
+module github.com/nlink-jp/msg-to-jsonl
 
 go 1.26.1
 

@@ -2,8 +2,8 @@
 
 ## Purpose
 
-lite-msg parses Outlook MSG files (OLE2/MAPI format) and outputs structured JSONL to stdout.
-It uses the same output schema as lite-eml, enabling both tools to feed the same downstream
+msg-to-jsonl parses Outlook MSG files (OLE2/MAPI format) and outputs structured JSONL to stdout.
+It uses the same output schema as eml-to-jsonl, enabling both tools to feed the same downstream
 pipeline without format conversion.
 
 ## MSG file format
@@ -56,10 +56,10 @@ Set only when String8 (PT_STRING8) body properties are present with a non-UTF-8 
 For modern Outlook (2007+) which stores strings as Unicode, the field is omitted.
 Code page is read from `PR_INTERNET_CPID` (0x3FDE).
 
-## Schema compatibility with lite-eml
+## Schema compatibility with eml-to-jsonl
 
-The output JSON schema is intentionally identical to lite-eml. This enables:
+The output JSON schema is intentionally identical to eml-to-jsonl. This enables:
 
 ```sh
-{ lite-eml dir/eml/; lite-msg dir/msg/; } | lite-llm -p "Summarise each email."
+{ eml-to-jsonl dir/eml/; msg-to-jsonl dir/msg/; } | lite-llm -p "Summarise each email."
 ```

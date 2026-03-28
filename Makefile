@@ -1,6 +1,6 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags "-X main.version=$(VERSION)"
-BINARY  := lite-msg
+BINARY  := msg-to-jsonl
 
 .PHONY: build test vet lint check clean setup build-all
 

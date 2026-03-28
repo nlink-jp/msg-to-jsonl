@@ -85,7 +85,7 @@ func buildEmail(doc *document, source string) *Email {
 	}
 
 	// --- Body ---
-	// text/plain first, then text/html (mirrors lite-eml ordering).
+	// text/plain first, then text/html (mirrors eml-to-jsonl ordering).
 	if plain := m.getString(propBody, cpid); plain != "" {
 		email.Body = append(email.Body, BodyPart{Type: "text/plain", Content: plain})
 	}

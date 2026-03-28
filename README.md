@@ -1,8 +1,8 @@
-# lite-msg
+# msg-to-jsonl
 
 Outlook MSG parser for shell pipelines.
 Reads `.msg` files and outputs structured JSONL — one JSON object per message — to stdout.
-Uses the same output schema as [lite-eml](https://github.com/nlink-jp/lite-eml),
+Uses the same output schema as [eml-to-jsonl](https://github.com/nlink-jp/eml-to-jsonl),
 so both tools compose naturally in the same pipeline.
 
 ## Features
@@ -21,37 +21,37 @@ so both tools compose naturally in the same pipeline.
 ## Installation
 
 ```sh
-git clone https://github.com/nlink-jp/lite-msg.git
-cd lite-msg
+git clone https://github.com/nlink-jp/msg-to-jsonl.git
+cd msg-to-jsonl
 make build
-# Add bin/ to PATH or copy bin/lite-msg to a directory on PATH
+# Add bin/ to PATH or copy bin/msg-to-jsonl to a directory on PATH
 ```
 
 ## Usage
 
 ```sh
 # Single file
-lite-msg message.msg
+msg-to-jsonl message.msg
 
 # Multiple files
-lite-msg mail1.msg mail2.msg
+msg-to-jsonl mail1.msg mail2.msg
 
 # Directory batch (all *.msg)
-lite-msg ~/exported-mail/
+msg-to-jsonl ~/exported-mail/
 
 # Stdin
-cat message.msg | lite-msg
+cat message.msg | msg-to-jsonl
 
 # Pretty-print for inspection
-lite-msg --pretty message.msg
+msg-to-jsonl --pretty message.msg
 
-# Combine with lite-eml in the same pipeline
-{ lite-eml inbox/eml/; lite-msg inbox/msg/; } | lite-llm -p "Summarise each email."
+# Combine with eml-to-jsonl in the same pipeline
+{ eml-to-jsonl inbox/eml/; msg-to-jsonl inbox/msg/; } | lite-llm -p "Summarise each email."
 ```
 
 ## Output format
 
-Each message produces one JSON line (identical schema to lite-eml):
+Each message produces one JSON line (identical schema to eml-to-jsonl):
 
 ```json
 {
@@ -97,7 +97,7 @@ make check       # vet + lint + test + build + govulncheck
 - [docs/design/overview.md](docs/design/overview.md) — architecture and design decisions
 - [docs/dependencies.md](docs/dependencies.md) — third-party dependencies
 
-## Part of lite-series
+## Part of util-series
 
-lite-msg is part of the [lite-series](https://github.com/nlink-jp/lite-series) —
+msg-to-jsonl is part of the [util-series](https://github.com/nlink-jp/util-series) —
 a collection of lightweight CLI tools for working with local and cloud LLMs.

@@ -1,10 +1,10 @@
 // Package parser implements MSG file parsing.
 // It extracts headers and body from Outlook MSG files (OLE2/MAPI format),
-// outputting the same JSON schema as lite-eml for pipeline compatibility.
+// outputting the same JSON schema as eml-to-jsonl for pipeline compatibility.
 package parser
 
 // Email is the structured representation of a parsed MSG message.
-// The schema is intentionally identical to lite-eml's output.
+// The schema is intentionally identical to eml-to-jsonl's output.
 type Email struct {
 	Source      string       `json:"source"`
 	MessageID   string       `json:"message_id,omitempty"`

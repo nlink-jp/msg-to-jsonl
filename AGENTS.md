@@ -2,12 +2,12 @@
 
 Natural language classifier for shell pipelines.
 Reads stdin, outputs one tag to stdout.
-Part of [lite-series](https://github.com/nlink-jp/lite-series).
+Part of [util-series](https://github.com/nlink-jp/util-series).
 
 ## Rules
 
 - Project rules (security, testing, docs, release, etc.): → [RULES.md](RULES.md)
-- Series-wide conventions (config format, Makefile, etc.): → [lite-series CONVENTIONS.md](https://github.com/nlink-jp/lite-series/blob/main/CONVENTIONS.md)
+- Series-wide conventions (config format, Makefile, etc.): → [util-series CONVENTIONS.md](https://github.com/nlink-jp/util-series/blob/main/CONVENTIONS.md)
 
 ## Build & test
 
