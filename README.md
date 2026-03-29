@@ -24,7 +24,7 @@ so both tools compose naturally in the same pipeline.
 git clone https://github.com/nlink-jp/msg-to-jsonl.git
 cd msg-to-jsonl
 make build
-# Add bin/ to PATH or copy bin/msg-to-jsonl to a directory on PATH
+# Add dist/ to PATH or copy dist/msg-to-jsonl to a directory on PATH
 ```
 
 ## Usage
