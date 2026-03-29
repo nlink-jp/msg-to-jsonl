@@ -1,18 +1,19 @@
-# AGENTS.md — lite-switch
+# AGENTS.md — msg-to-jsonl
 
-Natural language classifier for shell pipelines.
-Reads stdin, outputs one tag to stdout.
+Outlook MSG parser for shell pipelines.
+Reads `.msg` files and outputs structured JSONL — one JSON object per message — to stdout.
+Uses the same output schema as [eml-to-jsonl](https://github.com/nlink-jp/eml-to-jsonl).
 Part of [util-series](https://github.com/nlink-jp/util-series).
 
 ## Rules
 
 - Project rules (security, testing, docs, release, etc.): → [RULES.md](RULES.md)
-- Series-wide conventions (config format, Makefile, etc.): → [util-series CONVENTIONS.md](https://github.com/nlink-jp/util-series/blob/main/CONVENTIONS.md)
+- Series-wide conventions: → [util-series CONVENTIONS.md](https://github.com/nlink-jp/util-series/blob/main/CONVENTIONS.md)
 
 ## Build & test
 
 ```sh
-make build    # bin/lite-switch
+make build    # dist/msg-to-jsonl
 make check    # vet → lint → test → build → govulncheck
 go test ./... # tests only
 ```
@@ -20,18 +21,18 @@ go test ./... # tests only
 ## Key structure
 
 ```
-main.go                     ← flag parsing, stdin reading, wiring
-internal/config/            ← loads config.toml (TOML) + switches.yaml (YAML), env overrides
-internal/llm/               ← HTTP client (retry + backoff), prompt building, input wrapping
-internal/classifier/        ← tool calling, tag extraction (4-strategy fallback chain)
+main.go                        ← entry point, flag parsing, file reading
+internal/parser/
+  parse.go                     ← top-level Parse() entry point
+  email.go                     ← Email struct, ToJSON() (shared schema with eml-to-jsonl)
+  mapi.go                      ← MAPI property extraction (From, To, Subject, Body, etc.)
+  mapi_test.go                 ← unit tests
+  cfb.go                       ← Compound File Binary (OLE2) container reader
 ```
 
 ## Gotchas
 
-- **Two config files, two formats**: `config.toml` (TOML, API settings) and `switches.yaml` (YAML, classification data). Do not mix them up.
-- **Switches file is not a system config**: it belongs next to the project, not in `~/.config/`. It is safe to version-control (no secrets).
-- **No Cobra**: uses the standard `flag` package. No subcommands.
-- **Endpoint normalisation**: `base_url` accepts with or without `/v1`; `client.endpoint()` handles both.
-- **Fallback chain**: tool call → JSON in content → tag string in content → last switch. The last switch acts as a catch-all default.
-- **Module path**: `github.com/nlink-jp/lite-switch`.
-- **Env vars**: `LITE_SWITCH_BASE_URL`, `LITE_SWITCH_API_KEY`, `LITE_SWITCH_MODEL`.
+- **CFB/OLE2 parsing**: MSG files are Compound File Binary containers; `cfb.go` reads the FAT chain directly.
+- **MAPI properties**: email fields are extracted via MAPI property IDs, not MIME headers.
+- **Same output schema as eml-to-jsonl**: designed to be interchangeable in pipelines.
+- **Module path**: `github.com/nlink-jp/msg-to-jsonl`.
