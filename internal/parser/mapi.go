@@ -259,3 +259,35 @@ func parseTransportHeaders(raw string) string {
 	}
 	return ""
 }
+
+// parseReceivedHeaders extracts all Received header values from a raw header block.
+// Handles multi-line (folded) Received headers per RFC 2822.
+func parseReceivedHeaders(raw string) []string {
+	var received []string
+	var current string
+	inReceived := false
+
+	for _, line := range strings.Split(raw, "\n") {
+		trimmed := strings.TrimRight(line, "\r")
+		if strings.HasPrefix(strings.ToLower(trimmed), "received:") {
+			if inReceived && current != "" {
+				received = append(received, strings.TrimSpace(current))
+			}
+			current = strings.TrimSpace(trimmed[len("received:"):])
+			inReceived = true
+		} else if inReceived && len(trimmed) > 0 && (trimmed[0] == ' ' || trimmed[0] == '\t') {
+			// Continuation line (folded header)
+			current += " " + strings.TrimSpace(trimmed)
+		} else {
+			if inReceived && current != "" {
+				received = append(received, strings.TrimSpace(current))
+				current = ""
+			}
+			inReceived = false
+		}
+	}
+	if inReceived && current != "" {
+		received = append(received, strings.TrimSpace(current))
+	}
+	return received
+}

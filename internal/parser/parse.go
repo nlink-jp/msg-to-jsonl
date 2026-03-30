@@ -50,9 +50,10 @@ func buildEmail(doc *document, source string) *Email {
 		email.Date = t.Format(time.RFC3339)
 	}
 
-	// X-Mailer from raw transport headers (only present for internet mail).
+	// X-Mailer and Received headers from raw transport headers (only present for internet mail).
 	if raw := m.getString(propTransportHeaders, cpid); raw != "" {
 		email.XMailer = parseTransportHeaders(raw)
+		email.Received = parseReceivedHeaders(raw)
 	}
 
 	// --- Recipients ---

@@ -16,6 +16,7 @@ type Email struct {
 	Subject     string       `json:"subject,omitempty"`
 	Date        string       `json:"date,omitempty"`
 	XMailer     string       `json:"x_mailer,omitempty"`
+	Received    []string     `json:"received,omitempty"`
 	Encoding    string       `json:"encoding,omitempty"`
 	Body        []BodyPart   `json:"body"`
 	Attachments []Attachment `json:"attachments"`
