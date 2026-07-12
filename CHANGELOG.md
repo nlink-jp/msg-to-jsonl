@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 
+## [0.4.0] - 2026-07-12
+
+### Added
+
+- **`LICENSE` file (MIT).** The repository previously had no license file;
+  it is now MIT-licensed and the license is bundled in every release archive.
+
+### Removed
+
+- **darwin/amd64 (Intel) pre-built binary.** macOS releases now ship
+  **arm64 only**, per the org-wide policy (darwin is Apple-Silicon only; no
+  universal binaries). Intel Mac users can build from source.
+
+### Changed
+
+- **Linux release archives are now `.tar.gz`** (darwin/windows remain `.zip`),
+  per `nlink-jp/.github` CONVENTIONS.md §Release Archive Standard. Archives
+  now bundle `README.md` + `LICENSE` alongside the canonical binary.
+- **darwin code-signature identifier** is now the canonical `msg-to-jsonl`
+  (was `msg-to-jsonl-darwin-arm64`), set via `codesign -i` so it stays stable
+  after the archived binary is renamed to its canonical name.
+
+No change to the binary's behaviour — a packaging / build-config release.
+
 ## [0.3.1] - 2026-05-23
 
 ### Added
