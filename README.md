@@ -94,8 +94,8 @@ make check       # vet + lint + test + build + govulncheck
 
 ## Documentation
 
-- [docs/design/overview.md](docs/design/overview.md) — architecture and design decisions
-- [docs/dependencies.md](docs/dependencies.md) — third-party dependencies
+- [docs/en/design/overview.md](docs/en/design/overview.md) — architecture and design decisions
+- [docs/en/dependencies.md](docs/en/dependencies.md) — third-party dependencies
 
 ## Part of util-series
 

@@ -74,7 +74,7 @@ All contributors (including Claude Code) must follow these rules.
 ## 13. Design Before Implementation
 
 - Before writing any production code, step back and review the overall system:
-  1. Write a high-level design document (`docs/design/`).
+  1. Write a high-level design document (`docs/en/design/`).
   2. Produce a development plan with phases and milestones.
   3. Get explicit sign-off before starting implementation.
 
@@ -114,7 +114,7 @@ All contributors (including Claude Code) must follow these rules.
 ## 18. Dependency Management
 
 - Add third-party dependencies only when genuinely necessary.
-- For each dependency added, document in `docs/dependencies.md`:
+- For each dependency added, document in `docs/en/dependencies.md`:
   - Purpose and why an in-house solution was not preferred.
   - License and any compliance considerations.
 - Remove unused dependencies promptly.

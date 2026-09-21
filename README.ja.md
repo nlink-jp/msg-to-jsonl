@@ -94,8 +94,8 @@ make check       # vet + lint + test + build + govulncheck
 
 ## ドキュメント
 
-- [docs/design/overview.md](docs/design/overview.md) — アーキテクチャと設計判断
-- [docs/dependencies.md](docs/dependencies.md) — サードパーティ依存
+- [docs/ja/design/overview.ja.md](docs/ja/design/overview.ja.md) — アーキテクチャと設計判断
+- [docs/ja/dependencies.ja.md](docs/ja/dependencies.ja.md) — サードパーティ依存
 
 ## util-series の一部
 
