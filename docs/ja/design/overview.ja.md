@@ -61,5 +61,5 @@ Outlook はアドレスを 2 つの形式で格納しうる:
 出力の JSON スキーマは、意図的に eml-to-jsonl と同一にしている。これにより次のことができる:
 
 ```sh
-{ eml-to-jsonl dir/eml/; msg-to-jsonl dir/msg/; } | lite-llm -p "Summarise each email."
+{ eml-to-jsonl dir/eml/; msg-to-jsonl dir/msg/; } | llm-cli -s "Summarise each email."
 ```

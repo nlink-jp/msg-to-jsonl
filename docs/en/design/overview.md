@@ -61,5 +61,5 @@ Code page is read from `PR_INTERNET_CPID` (0x3FDE).
 The output JSON schema is intentionally identical to eml-to-jsonl. This enables:
 
 ```sh
-{ eml-to-jsonl dir/eml/; msg-to-jsonl dir/msg/; } | lite-llm -p "Summarise each email."
+{ eml-to-jsonl dir/eml/; msg-to-jsonl dir/msg/; } | llm-cli -s "Summarise each email."
 ```
