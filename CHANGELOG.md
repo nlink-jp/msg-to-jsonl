@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The pipe examples and comparisons named lite-llm, which is archived; they name
   its successor, llm-cli, in the form its README documents for piped data
   (`… | llm-cli -s "<instruction>"`).
+- The pipe examples named llm-cli, which is now archived too; they name its
+  successor, lagent, in the form it documents for piped data
+  (`… | lagent -p "<instruction>"`).
 
 ### Internal
 

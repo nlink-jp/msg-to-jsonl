@@ -46,7 +46,7 @@ cat message.msg | msg-to-jsonl
 msg-to-jsonl --pretty message.msg
 
 # 同じパイプラインで eml-to-jsonl と組み合わせる
-{ eml-to-jsonl inbox/eml/; msg-to-jsonl inbox/msg/; } | llm-cli -s "Summarise each email."
+{ eml-to-jsonl inbox/eml/; msg-to-jsonl inbox/msg/; } | lagent -p "各メールを要約してください。"
 ```
 
 ## 出力形式
