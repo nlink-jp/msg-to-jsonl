@@ -7,16 +7,16 @@
 
 ## 機能
 
-- ヘッダーを抽出: `from`、`to`、`cc`、`bcc`、`subject`、`date`、`message_id`、`in_reply_to`、`x_mailer`
-- Unicode（UTF-16LE）とコードページ符号化（String8）の MAPI プロパティを扱う
-- すべてのテキストを **UTF-8** にデコードし、関係がある場合は元の文字セットを `encoding` フィールドに記録する
-- 日本語の文字セットに対応: Shift_JIS（CPID 932）とその他の Windows コードページ
-- SMTP アドレスを優先し、X.400/Exchange の内部アドレスは黙って捨てる
-- MAPI の受信者レコードから To/CC/BCC を構造化して分離
-- UTF-16LE の BOM 判定とコードページ判定を伴う HTML 本文のデコード
-- 添付ファイルのメタデータ（ファイル名、MIME タイプ、サイズ）— バイナリの内容は埋め込まない
-- 入力: 標準入力、ファイル引数、ディレクトリ（ディレクトリ内のすべての `*.msg` を処理）
-- API キーもネットワークアクセスも不要 — 純粋にローカルで動くパーサー
+- `.msg` は組織のメールパーサー [mailparse](https://github.com/nlink-jp/mailparse)（攻撃者が作ったメールを前提に
+  書かれている。MS-CFB の読み取りも自前で、コミュニティ製のパッケージは使わない）で読む
+- eml-to-jsonl と同じ形を出力する: `from`、`sender`、`reply_to`、`return_path`、`to`、`cc`、`bcc`、`subject`、
+  `date`、`message_id`、`in_reply_to`、`references`、`x_mailer`、`received`、`encoding`、`body`、`attachments`、`warnings`
+- 受信したメールはインターネットヘッダーから、それ以外は MAPI プロパティから読む。To/Cc/Bcc は受信者の表から
+- Unicode とコードページ（String8）のプロパティ、日本語のコードページ（932、50220〜50222、51932）を **UTF-8** に
+- 圧縮 RTF の中にしか無い本文も取り出す
+- 添付ファイルのメタデータ（ファイル名、MIME タイプ、サイズ）。添付されたメールは同じ形に解析する
+- 入力: stdin、ファイル引数、ディレクトリ（ディレクトリ指定時は `*.msg` を一括処理）
+- API キーもネットワークも不要。手元だけで解析する
 
 ## インストール
 
@@ -51,30 +51,66 @@ msg-to-jsonl --pretty message.msg
 
 ## 出力形式
 
-メッセージ 1 通につき JSON を 1 行出力する（スキーマは eml-to-jsonl と同一）:
+各メッセージが1行の JSON として出力されます（eml-to-jsonl と msg-to-jsonl は同じ形）:
 
 ```json
 {
   "source": "inbox/message.msg",
   "message_id": "<abc123@example.com>",
   "in_reply_to": "<xyz@example.com>",
-  "from": "Alice <alice@example.com>",
-  "to": ["Bob <bob@example.com>"],
-  "cc": [],
-  "bcc": [],
-  "subject": "Hello World",
-  "date": "2026-03-27T10:00:00Z",
-  "x_mailer": "Microsoft Outlook 16.0",
-  "encoding": "Shift_JIS",
+  "references": "<first@example.com> <xyz@example.com>",
+  "from": "山田太郎 <yamada@example.co.jp>",
+  "sender": "list@example.org",
+  "reply_to": ["\"営業, 東京\" <sales@example.co.jp>"],
+  "return_path": "bounce@example.co.jp",
+  "to": ["鈴木花子 <suzuki@example.co.jp>"],
+  "subject": "テスト",
+  "date": "2026-03-27T10:00:00+09:00",
+  "x_mailer": "Apple Mail",
+  "received": [
+    "from mx2.example.com by mx1.example.net; Mon, 30 Mar 2026 09:00:00 +0900",
+    "from sender.example.org by mx2.example.com; Mon, 30 Mar 2026 08:59:55 +0900"
+  ],
+  "encoding": "ISO-2022-JP",
   "body": [
-    {"type": "text/plain", "content": "Hello..."},
+    {"type": "text/plain", "content": "本文テキスト..."},
     {"type": "text/html",  "content": "<html>...</html>"}
   ],
   "attachments": [
-    {"filename": "report.pdf", "mime_type": "application/pdf", "size": 102400}
+    {"filename": "report.pdf", "mime_type": "application/pdf", "size": 102400},
+    {"filename": "", "mime_type": "message/rfc822", "size": 2048,
+     "message": {"message_id": "<fwd@example.org>", "subject": "元のメール", "body": [], "attachments": [], "warnings": []}}
+  ],
+  "warnings": [
+    {"code": "duplicate_field", "detail": "From appears 2 times; every occurrence is kept"}
   ]
 }
 ```
+
+**アドレス:** 欄のすべての出現の、すべての mailbox。`from` と `sender` は 1 本の文字列（`, ` で連ねる）、`to`・`cc`・
+`bcc`・`reply_to` は配列。表示名に atom の文字と空白以外が含まれれば引用符で囲むので、復号すると
+`Bank <security@bank.example>` になる表示名も表示名のまま。`return_path` はバウンスなら `<>`。
+
+**本文:** `text/plain` と `text/html` のパートを、メールの中の順に。その他のテキストのパート（`text/calendar`、
+`text/csv`）は添付になる。
+
+**encoding フィールド:** UTF-8・US-ASCII 以外の最初の本文の元の文字コード（例: `ISO-2022-JP`）。それ以外は省略。
+
+**attachments フィールド:** メタデータのみ（ファイル名・MIME タイプ・デコード後のバイトサイズ）。バイナリは
+埋め込まない。メールに名前が無ければファイル名は空。添付されたメール（`message/rfc822`、または中身でメールと
+分かるもの）は `message` に同じ形（`source` は無し）で入る。3 層まで。
+
+**warnings:** mailparse がこのメールで失敗せずに処理したこと（重複したヘッダー、壊れたアドレス、壊れた符号化、
+上限など）を `{code, detail, part}` で。コードは安定している（[mailparse の README](https://github.com/nlink-jp/mailparse)）。
+常に配列。
+
+**受け付けない入力:** Outlook の `.msg` 以外（`.eml` は eml-to-jsonl を使う。`winmail.dat` も不可）、64 MiB を
+超えるファイル。エラーは stderr に出し、他のファイルの処理は続ける。
+
+**値の出どころ:** 受信した `.msg` はインターネットヘッダーを持ち、差出人などの欄はそこから eml-to-jsonl と同じに
+読む。MAPI の差出人や件名が食い違えば `mapi_header_mismatch`、受信者の表にしか無い Bcc はそこから読んで
+`bcc_from_mapi` を付ける。インターネットヘッダーの無い `.msg`（下書き、送信済み）は MAPI プロパティから読み、
+`no_transport_headers` の警告が付く。
 
 ## フラグ
 

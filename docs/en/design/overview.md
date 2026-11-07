@@ -2,64 +2,47 @@
 
 ## Purpose
 
-msg-to-jsonl parses Outlook MSG files (OLE2/MAPI format) and outputs structured JSONL to stdout.
-It uses the same output schema as eml-to-jsonl, enabling both tools to feed the same downstream
-pipeline without format conversion.
+msg-to-jsonl reads Outlook .msg files and outputs structured JSONL to stdout. It prints the same
+schema as eml-to-jsonl, so both tools feed the same downstream pipeline without format conversion.
 
-## MSG file format
+## Parsing
 
-MSG files are OLE2 Compound File Binary Format (CFBF) containers.
-Inside the container, email data is stored as MAPI properties — streams named
-`__substg1.0_PPPPTTTT` where `PPPP` is the property ID (hex) and `TTTT` is the type (hex).
-
-Recipients are stored in sub-storages named `__recip_version1.0_#XXXXXXXX`.
-Attachments are in `__attach_version1.0_#XXXXXXXX`.
-
-## Parsing pipeline
+All parsing is done by [mailparse](https://github.com/nlink-jp/mailparse), which reads the
+compound file (its own implementation of MS-CFB), the MAPI properties, the internet headers a
+received message carries (`PR_TRANSPORT_MESSAGE_HEADERS`), compressed RTF and attached messages.
+This tool holds no parsing of its own.
 
 ```
-[]byte (file content)
-  └─ mscfb.New()               — OLE2 compound file parsing
-       └─ loadDocument()        — stream collection by scope
-            ├─ root mapiProps   — message-level properties
-            ├─ []mapiProps      — per-recipient properties
-            └─ []mapiProps      — per-attachment properties
-                 └─ buildEmail() — assembles Email struct
-                      ├─ headers from root props
-                      ├─ To/CC/BCC from recipient storages
-                      ├─ body from PR_BODY / PR_HTML
-                      └─ attachments from attachment storages
+file / stdin
+  └─ read up to 64 MiB + 1 byte   — mailparse.DefaultMaxSize; more is ErrTooLarge
+       └─ mailparse.ParseMSG()    — anything but a .msg (an .eml, a winmail.dat) is an error
+            └─ parser.FromMessage() — the shared mapping below
 ```
 
-## MAPI property types
+When the .msg carries internet headers, the identity fields come from them, as eml-to-jsonl reads
+them; mailparse reports where the MAPI properties Outlook displays disagree
+(`mapi_header_mismatch`) and takes a Bcc known only to the recipient table from there
+(`bcc_from_mapi`). A .msg without internet headers (a draft, a sent item) is read from its MAPI
+properties with a `no_transport_headers` warning.
 
-| Type code | Name | Go handling |
-|-----------|------|-------------|
-| `001F` | PT_UNICODE | UTF-16LE → UTF-8 via `unicode/utf16` |
-| `001E` | PT_STRING8 | codepage → UTF-8 via `golang.org/x/text` |
-| `0040` | PT_SYSTIME | Windows FILETIME → `time.Time` |
-| `0003` | PT_LONG | `binary.LittleEndian.Uint32` |
-| `0102` | PT_BINARY | raw `[]byte` |
+## Mapping (identical in eml-to-jsonl and msg-to-jsonl)
 
-## Address handling
+`internal/parser/email.go` maps a `mailparse.Message` onto the JSONL record. The file is the same in
+both tools, byte for byte, so the two print one schema; only the entry (`parse.go`) differs.
 
-Outlook can store addresses in two formats:
-- **SMTP** (`PR_SENDER_SMTP_ADDRESS`, `PR_SMTP_ADDRESS`): standard email address — always preferred.
-- **X.400** (`PR_SENDER_EMAIL_ADDRESS`, `PR_EMAIL_ADDRESS` with addr-type `EX`): internal Exchange
-  routing address like `/O=CONTOSO/OU=...`. These are discarded silently.
+| Field | From mailparse |
+|---|---|
+| `from`, `sender` | every mailbox of every occurrence, `Mailbox.String()`, joined by `, ` |
+| `to`, `cc`, `bcc`, `reply_to` | every mailbox of every occurrence, `Mailbox.String()`, one element each |
+| `return_path` | `Mailbox.String()`; `<>` for a null reverse path |
+| `date` | `Date` in RFC 3339, else `DateRaw` |
+| `subject`, `message_id`, `in_reply_to`, `references` | as mailparse gives them |
+| `x_mailer` | the first X-Mailer, `Field.Collapsed()` |
+| `received` | every Received, `Field.Collapsed()`, in order |
+| `encoding` | the first body charset other than UTF-8 / US-ASCII, upper-cased; a .msg Unicode property (UTF-16LE) is the container's storage and does not count |
+| `body` | the message's bodies; a body recovered from compressed RTF (`Origin == "rtf"`) only when the message has no other body (in a .msg the RTF normally copies another body) |
+| `attachments` | every attachment: `Filename`, `MediaType`, `Size`; an attached message becomes `message`, mapped the same way, without `source` |
+| `warnings` | the message's own `Warnings` (a nested message carries its own); always an array |
 
-`PR_TRANSPORT_MESSAGE_HEADERS` (the original SMTP headers, when present) is parsed for `X-Mailer`.
-
-## Encoding field
-
-Set only when String8 (PT_STRING8) body properties are present with a non-UTF-8 code page.
-For modern Outlook (2007+) which stores strings as Unicode, the field is omitted.
-Code page is read from `PR_INTERNET_CPID` (0x3FDE).
-
-## Schema compatibility with eml-to-jsonl
-
-The output JSON schema is intentionally identical to eml-to-jsonl. This enables:
-
-```sh
-{ eml-to-jsonl dir/eml/; msg-to-jsonl dir/msg/; } | lagent -p "Summarise each email."
-```
+`Mailbox.String()` is the only way an address becomes text: it quotes a display name that is not
+plain atoms, so a name that decodes to an address form stays a name. No address is formatted here.

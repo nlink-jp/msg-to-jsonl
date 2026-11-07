@@ -8,12 +8,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Reverted
+The move to [mailparse](https://github.com/nlink-jp/mailparse) is redone, together with
+eml-to-jsonl, mail-analyzer and mail-analyzer-local, so the four read mail the same way. The
+changes below are against v0.4.0, the last release before the move; the differences from v0.5.0
+follow them.
 
-- The move to nlink-jp/mailparse (v0.5.0) is undone: the code is back to
-  what it was before it, reading .msg with mscfb again. Four tools were
-  moved separately and came out inconsistent; the move will be redone for
-  all of them together.
+### Changed
+
+- **The `.msg` is read by mailparse v0.2.0** instead of an in-tool reader on the community packages
+  `richardlehane/mscfb` and `msoleps`, which are no longer dependencies. eml-to-jsonl and msg-to-jsonl
+  now print one schema from one shared mapping (`internal/parser/email.go`, identical in both).
+  For the same input:
+  - `date` is filled (it was empty for real Outlook files).
+  - A received `.msg` is read from its internet headers, as eml-to-jsonl reads them (a `message_id`
+    the MAPI properties lacked is found there); a Bcc known only to the recipient table is taken from there
+    with a `bcc_from_mapi` warning, and recipients are split into To, Cc and Bcc by the table (a Bcc
+    recipient was listed in `to`).
+  - Mailboxes are written in RFC 5322 form: a display name with a comma or anything but atom
+    characters and spaces is quoted, so it reads back as one mailbox.
+  - An embedded message is listed as an attachment and parsed into `message`.
+  - A body that exists only in the compressed RTF is output; an RTF copy of another body is not.
+  - Japanese code pages 50220–50222 (ISO-2022-JP) and 51932 (EUC-JP) are decoded.
+  - Files larger than 64 MiB are refused; anything that is not a `.msg` is an error.
+
+### Added
+
+- `sender`, `reply_to` (array), `return_path` (`<>` for a bounce) and `references`.
+- `attachments[].message`: an attached message (`message/rfc822`, an embedded `.msg`, or a message
+  recognized by its content) parsed into the same shape, without `source`, up to three levels deep.
+- `warnings`: what the parser met and handled instead of failing, as `{code, detail, part}` with
+  mailparse's stable codes. Always an array; a nested message carries its own.
+
+### Compared with v0.5.0
+
+- `warnings` is always an array (it was omitted when empty).
+- `sender`, `reply_to`, `return_path`, `references` and `attachments[].message` are new.
+- The size limit is mailparse's 64 MiB (it was 100 MiB).
+
+### Fixed
+
+- The deferred `Close` call passes `errcheck`.
 
 ## [0.5.0] - 2026-11-07
 

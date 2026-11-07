@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/nlink-jp/mailparse"
 	"github.com/nlink-jp/msg-to-jsonl/internal/parser"
 )
 
@@ -83,16 +84,27 @@ func processDir(dir string, enc *encoder) error {
 }
 
 func processFile(path string, enc *encoder) error {
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	data, err := readLimited(f)
 	if err != nil {
 		return err
 	}
 	return processData(data, path, enc)
 }
 
+// readLimited reads one byte past mailparse's size limit, so the parser
+// reports ErrTooLarge instead of reading a cut file or exhausting memory.
+func readLimited(r io.Reader) ([]byte, error) {
+	return io.ReadAll(io.LimitReader(r, mailparse.DefaultMaxSize+1))
+}
+
 // processStdin reads all of stdin into memory (MSG requires random access).
 func processStdin(enc *encoder) error {
-	data, err := io.ReadAll(os.Stdin)
+	data, err := readLimited(os.Stdin)
 	if err != nil {
 		return err
 	}

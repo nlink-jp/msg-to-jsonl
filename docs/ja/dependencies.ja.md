@@ -1,25 +1,25 @@
 # 依存関係
 
-## ランタイム
+## 実行時
 
-| パッケージ | バージョン | 用途 | 自前実装にしない理由 |
+| パッケージ | バージョン | 目的 | 内製しない理由 |
 |---------|---------|---------|-----------------|
-| `github.com/richardlehane/mscfb` | v1.0.6 | OLE2 Compound File Binary Format の解析（MSG コンテナ構造の読み取り） | CFBF の仕様は複雑である（セクタチェーン、FAT、mini-FAT、ディレクトリツリー）。正しい実装は数百行になる。mscfb はこの形式に絞った、テスト済みの Go ライブラリである。 |
-| `golang.org/x/text` | v0.35.0 | String8 の MAPI プロパティの文字セット変換（Shift_JIS、GBK、Windows コードページ） | eml-to-jsonl と同じ理由。Go チームが保守する、Go 標準の文字セットライブラリである。 |
+| `github.com/nlink-jp/mailparse` | v0.2.0 | メールを読む: Outlook の .msg（複合ファイル）、MAPI プロパティ、インターネットヘッダー、圧縮 RTF、添付されたメール | 内製である。組織のメールパーサーで、eml-to-jsonl・mail-analyzer・mail-analyzer-local と共有し、同じ読み方をする。 |
+| `golang.org/x/text` | （mailparse 経由） | 文字コードの変換（ISO-2022-JP、Shift_JIS、EUC-JP、Windows のコードページ） | Go チームが保守する、Go の定番の文字コードライブラリ。 |
+| `golang.org/x/net` | （mailparse 経由） | `<meta charset>` からの文字コードの判定（`html`） | Go チームが保守する。 |
 
-## 利用している標準ライブラリのパッケージ
+コミュニティ製のパッケージは使わない。
 
-| パッケージ | 用途 |
+## 使用している標準ライブラリパッケージ
+
+| パッケージ | 目的 |
 |---------|---------|
-| `encoding/binary` | MAPI プロパティ値のリトルエンディアン整数デコード |
-| `unicode/utf16` | PT_UNICODE の MAPI プロパティの UTF-16LE デコード |
-| `encoding/hex` | ストリーム名の解析（`__substg1.0_PPPPTTTT`） |
-| `encoding/json` | JSONL 出力 |
-| `path/filepath` | ディレクトリの glob 展開 |
+| `encoding/json` | JSONL の出力 |
+| `path/filepath` | ディレクトリのグロブ |
 
 ## 開発
 
-| ツール | 用途 |
+| ツール | 目的 |
 |------|---------|
 | `golangci-lint` | 静的解析 |
-| `govulncheck` | 依存の脆弱性スキャン |
+| `govulncheck` | 依存関係の脆弱性スキャン |

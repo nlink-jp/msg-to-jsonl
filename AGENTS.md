@@ -22,18 +22,24 @@ go test ./... # tests only
 ## Key structure
 
 ```
-main.go                        ← entry point, flag parsing, file reading
+main.go                        ← entry point, flag parsing, stdin/file reading
 internal/parser/
-  parse.go                     ← top-level Parse() entry point
-  email.go                     ← Email struct, ToJSON() (shared schema with eml-to-jsonl)
-  mapi.go                      ← MAPI property extraction (From, To, Subject, Body, etc.)
-  mapi_test.go                 ← unit tests
-  cfb.go                       ← Compound File Binary (OLE2) container reader
+  parse.go                     ← Parse([]byte): mailparse.ParseMSG
+  parse_test.go                ← entry tests
+  email.go                     ← Email schema + FromMessage (mailparse.Message → Email)
+  email_test.go                ← schema tests
 ```
+
+`email.go` and `email_test.go` are **identical, byte for byte, in eml-to-jsonl and msg-to-jsonl**:
+the two tools print one schema. Change them in both repositories together (`cmp` them).
 
 ## Gotchas
 
-- **CFB/OLE2 parsing**: MSG files are Compound File Binary containers; `cfb.go` reads the FAT chain directly.
-- **MAPI properties**: email fields are extracted via MAPI property IDs, not MIME headers.
-- **Same output schema as eml-to-jsonl**: designed to be interchangeable in pipelines.
+- **All parsing is mailparse** (`github.com/nlink-jp/mailparse`): no own header, MIME, charset or
+  CFB code. A parsing defect is fixed in mailparse and released there first, never worked around here.
+- **Addresses become text only through `Mailbox.String()`**: never join `Name` and `Address` yourself
+  (that re-creates the display-name spoof mailparse prevents).
+- **`warnings` is always an array** and belongs to its own message; a nested message carries its own.
+- **Size limit is mailparse's** (`DefaultMaxSize`, 64 MiB): read one byte past it and let `ErrTooLarge` speak.
+- **Fixtures are fictional** (RFC 2606 domains); .msg/TNEF fixtures are built with `mailparse/msgtest`.
 - **Module path**: `github.com/nlink-jp/msg-to-jsonl`.
