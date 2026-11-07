@@ -24,25 +24,16 @@ go test ./... # tests only
 ```
 main.go                        ← entry point, flag parsing, file reading
 internal/parser/
-  parse.go                     ← Parse(): mailparse.ParseMSG → eml-to-jsonl schema (bodies, encoding, addresses)
-  email.go                     ← Email struct (shared schema with eml-to-jsonl, plus warnings)
-  parse_test.go                ← tests on .msg files built in code with mailparse/msgtest
+  parse.go                     ← top-level Parse() entry point
+  email.go                     ← Email struct, ToJSON() (shared schema with eml-to-jsonl)
+  mapi.go                      ← MAPI property extraction (From, To, Subject, Body, etc.)
+  mapi_test.go                 ← unit tests
+  cfb.go                       ← Compound File Binary (OLE2) container reader
 ```
 
 ## Gotchas
 
-- **mailparse reads the container** (`github.com/nlink-jp/mailparse` v0.2.0); this tool only maps
-  fields. No community dependencies: mscfb/msoleps were removed in v0.5.0.
-- **Fixed-length MAPI properties** (dates, attach method, code pages) live in `__properties_version1.0`;
-  mailparse reads them. The old reader looked only at `__substg1.0_` streams, so `date` was always empty.
-- **Headers vs MAPI**: with `PR_TRANSPORT_MESSAGE_HEADERS`, identity and recipients come from the
-  headers, and mailparse adds a Bcc found only in the recipient table (`bcc_from_mapi`); without,
-  from MAPI with a `no_transport_headers` warning. In-Reply-To, the display-list fallback and the
-  UTF-16 HTML byte order mark are all mailparse's (v0.2.0); this tool reads no MAPI property itself.
-- **Address strings use `formatMailbox`**, the quoting rule eml-to-jsonl uses — not
-  `mailparse.Mailbox.String()`, which quotes more ("Alice B.") and would make the two tools differ.
-- **RTF bodies** are output only for a media type no other property gave (`selectBodies`).
-- **Test fixtures are built in code** (`github.com/nlink-jp/mailparse/msgtest`); never commit a real `.msg`.
+- **CFB/OLE2 parsing**: MSG files are Compound File Binary containers; `cfb.go` reads the FAT chain directly.
+- **MAPI properties**: email fields are extracted via MAPI property IDs, not MIME headers.
 - **Same output schema as eml-to-jsonl**: designed to be interchangeable in pipelines.
-- **`make build` signs on darwin**: the codesign timestamp needs network access.
 - **Module path**: `github.com/nlink-jp/msg-to-jsonl`.

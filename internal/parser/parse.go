@@ -1,215 +1,215 @@
 package parser
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/nlink-jp/mailparse"
 )
-
-// Limits for one parse. mailparse's defaults (64 MiB input, 120 MiB decoded)
-// suit a mail analyser; a pipeline tool reading saved Outlook messages meets
-// larger ones, so the input limit is raised and the decoded budget follows it
-// (attachment bytes, bodies and the expanded compressed RTF all count).
-const (
-	maxInputSize = 100 << 20 // 100 MiB
-	maxDecoded   = 2 * maxInputSize
-)
-
-var options = mailparse.Options{MaxSize: maxInputSize, MaxDecoded: maxDecoded}
 
 // Parse reads raw MSG file bytes and returns a structured Email.
 // source is recorded as-is in the Source field (e.g. a file path or "stdin").
 func Parse(data []byte, source string) (*Email, error) {
-	m, err := mailparse.ParseMSG(bytes.NewReader(data), options)
+	doc, err := loadDocument(data)
 	if err != nil {
-		return nil, fmt.Errorf("reading .msg: %w", err)
+		return nil, fmt.Errorf("reading compound file: %w", err)
 	}
-	return buildEmail(m, source), nil
+	return buildEmail(doc, source), nil
 }
 
-// buildEmail maps a parsed message onto the eml-to-jsonl schema.
-func buildEmail(m *mailparse.Message, source string) *Email {
+// buildEmail assembles an Email from the parsed OLE2 document.
+func buildEmail(doc *document, source string) *Email {
+	m := doc.root
+	cpid := m.cpid()
+
 	email := &Email{
 		Source:      source,
-		MessageID:   strings.TrimSpace(m.MessageID),
-		InReplyTo:   foldCompat(m.InReplyTo),
-		Subject:     m.Subject,
 		Body:        []BodyPart{},
 		Attachments: []Attachment{},
 	}
 
 	// --- Headers ---
-	// With internet headers, mailparse reads identity from them; without, from
-	// MAPI properties (In-Reply-To from PidTagInReplyToId).
-	if f, ok := m.Header.First("X-Mailer"); ok {
-		email.XMailer = f.Collapsed()
+	email.MessageID = strings.TrimSpace(m.getString(propMessageID, cpid))
+	email.InReplyTo = strings.TrimSpace(m.getString(propInReplyTo, cpid))
+	email.Subject = m.getString(propSubject, cpid)
+
+	// From: prefer SMTP address, fall back to whatever address is stored.
+	senderName := m.getString(propSenderName, cpid)
+	senderEmail := m.getString(propSenderSMTP, cpid)
+	if senderEmail == "" {
+		senderEmail = m.getString(propSenderEmail, cpid)
 	}
-	for _, f := range m.Header.All("Received") {
-		if v := foldCompat(f.Raw); v != "" {
-			email.Received = append(email.Received, v)
+	if strings.HasPrefix(senderEmail, "/O=") || strings.HasPrefix(senderEmail, "/o=") {
+		senderEmail = "" // discard X.400 internal Exchange addresses
+	}
+	email.From = formatName(senderName, senderEmail)
+
+	// Date: prefer delivery time, fall back to client submit time.
+	if t, ok := m.getTime(propDeliveryTime); ok {
+		email.Date = t.Format(time.RFC3339)
+	} else if t, ok := m.getTime(propClientSubmitTime); ok {
+		email.Date = t.Format(time.RFC3339)
+	}
+
+	// X-Mailer and Received headers from raw transport headers (only present for internet mail).
+	if raw := m.getString(propTransportHeaders, cpid); raw != "" {
+		email.XMailer = parseTransportHeaders(raw)
+		email.Received = parseReceivedHeaders(raw)
+	}
+
+	// --- Recipients ---
+	// First try structured recipient storages for accurate To/CC/BCC split.
+	if len(doc.recipients) > 0 {
+		for _, r := range doc.recipients {
+			recipCPID := r.cpid()
+			if recipCPID == 0 {
+				recipCPID = cpid
+			}
+			addr := r.formatAddress(recipCPID)
+			if addr == "" {
+				continue
+			}
+			rtype, _ := r.getInt(propRecipType)
+			switch rtype {
+			case recipCC:
+				email.CC = append(email.CC, addr)
+			case recipBCC:
+				email.BCC = append(email.BCC, addr)
+			default: // 1 = To, or unknown → treat as To
+				email.To = append(email.To, addr)
+			}
 		}
-	}
-
-	email.From = strings.Join(mailboxes(m.From), ", ")
-	email.To = mailboxes(m.To)
-	email.CC = mailboxes(m.Cc)
-	// With headers, Bcc that is only in the recipient table comes from there
-	// (warned as bcc_from_mapi). With neither recipient objects nor headers,
-	// mailparse fills To/Cc/Bcc from Outlook's display lists, names only
-	// (warned as recipient_type).
-	email.BCC = mailboxes(m.Bcc)
-
-	switch {
-	case !m.Date.IsZero():
-		email.Date = m.Date.Format(time.RFC3339)
-	case m.DateRaw != "":
-		email.Date = m.DateRaw // unparsable Date header: kept as written, as eml-to-jsonl does
+	} else {
+		// Fall back to the flat display strings (semicolon-separated).
+		email.To = splitAddressList(m.getString(propDisplayTo, cpid))
+		email.CC = splitAddressList(m.getString(propDisplayCC, cpid))
+		email.BCC = splitAddressList(m.getString(propDisplayBCC, cpid))
 	}
 
 	// --- Body ---
-	email.Body, email.Encoding = selectBodies(m.Bodies)
+	// text/plain first, then text/html (mirrors eml-to-jsonl ordering).
+	if plain := m.getString(propBody, cpid); plain != "" {
+		email.Body = append(email.Body, BodyPart{Type: "text/plain", Content: plain})
+	}
+
+	// HTML body is stored as PT_BINARY; it may be UTF-8, UTF-16LE, or codepage-encoded.
+	if htmlBytes := m.getBinary(propHTMLBody); len(htmlBytes) > 0 {
+		htmlContent := decodeHTMLBody(htmlBytes, cpid)
+		email.Body = append(email.Body, BodyPart{Type: "text/html", Content: htmlContent})
+	}
+
+	// --- Encoding ---
+	// Only set when String8 properties were used with a non-UTF-8 codepage.
+	if hasString8Body(m) {
+		label := cpidToEncodingLabel(cpid)
+		if label != "" {
+			email.Encoding = label
+		}
+	}
 
 	// --- Attachments ---
-	for _, a := range m.Attachments {
-		mt := a.MediaType
-		if mt == "" {
-			mt = "application/octet-stream"
+	for _, a := range doc.attachments {
+		att := buildAttachment(a, cpid)
+		if att != nil {
+			email.Attachments = append(email.Attachments, *att)
 		}
-		email.Attachments = append(email.Attachments, Attachment{Filename: a.Filename, MIMEType: mt, Size: a.Size})
 	}
 
-	for _, w := range m.Warnings {
-		email.Warnings = append(email.Warnings, Warning(w))
-	}
 	return email
 }
 
-// selectBodies returns the bodies to output and the original charset label.
-//
-// A .msg may hold the same text up to three times: PidTagBody (text/plain),
-// PidTagHtml (text/html) and the compressed RTF, from which mailparse takes
-// the encapsulated HTML or text. The RTF-derived body is added only for a
-// media type no other property supplied — an HTML message whose HTML exists
-// only inside the RTF — so a message that has both does not repeat its text.
-// text/plain comes before text/html, as in eml-to-jsonl.
-func selectBodies(bodies []mailparse.Body) ([]BodyPart, string) {
-	direct := map[string]bool{}
-	for _, b := range bodies {
-		if !isRTF(b) {
-			direct[b.MediaType] = true
-		}
+// buildAttachment extracts attachment metadata from a MAPI attachment storage.
+func buildAttachment(a mapiProps, parentCPID int32) *Attachment {
+	cpid := a.cpid()
+	if cpid == 0 {
+		cpid = parentCPID
 	}
-	var plain, html []BodyPart
-	encoding := ""
-	for _, b := range bodies {
-		if isRTF(b) && direct[b.MediaType] {
-			continue
-		}
-		if encoding == "" {
-			encoding = charsetLabel(b.Charset)
-		}
-		p := BodyPart{Type: b.MediaType, Content: b.Content}
-		if b.MediaType == "text/html" {
-			html = append(html, p)
-		} else {
-			plain = append(plain, p)
-		}
+
+	// Long filename preferred over 8.3 filename.
+	filename := a.getString(propAttachLongName, cpid)
+	if filename == "" {
+		filename = a.getString(propAttachFilename, cpid)
 	}
-	return append(append([]BodyPart{}, plain...), html...), encoding
+
+	mimeType := a.getString(propAttachMIMETag, cpid)
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+
+	// Size: use PR_ATTACH_SIZE if present, otherwise measure the data.
+	size := 0
+	if v, ok := a.getInt(propAttachSize); ok && v > 0 {
+		size = int(v)
+	} else if b := a.getBinary(propAttachDataBin); b != nil {
+		size = len(b)
+	}
+
+	// Skip embedded MSG sub-objects (no filename, no data).
+	if filename == "" && size == 0 {
+		return nil
+	}
+
+	return &Attachment{
+		Filename: filename,
+		MIMEType: mimeType,
+		Size:     size,
+	}
 }
 
-func isRTF(b mailparse.Body) bool { return b.Origin == "rtf" }
-
-// charsetLabel returns the label for the `encoding` field: the original
-// charset of a body that was not Unicode, or "" (omit) for Unicode and ASCII.
-func charsetLabel(charset string) string {
-	c := strings.ToLower(charset)
-	switch {
-	case c == "", c == "utf-8", c == "us-ascii", strings.HasPrefix(c, "utf-16"):
-		return ""
+// hasString8Body reports whether the message uses String8 (PT_STRING8) for
+// the body — indicating a legacy codepage-encoded message.
+func hasString8Body(m mapiProps) bool {
+	if s, ok := m[propBody]; ok && s.propType == typeString8 {
+		return true
 	}
-	if l, ok := charsetLabels[c]; ok {
-		return l
+	if s, ok := m[propHTMLBody]; ok && s.propType == typeString8 {
+		return true
 	}
-	return strings.ToUpper(c)
+	return false
 }
 
-// charsetLabels keeps the labels earlier versions wrote for the code pages
-// they knew, and spells the common others as they are usually written.
-var charsetLabels = map[string]string{
-	"shift_jis":    "Shift_JIS",
-	"windows-31j":  "Shift_JIS",
-	"gbk":          "GBK",
-	"gb18030":      "GB18030",
-	"euc-kr":       "EUC-KR",
-	"big5":         "Big5",
-	"euc-jp":       "EUC-JP",
-	"iso-2022-jp":  "ISO-2022-JP",
-	"windows-874":  "Windows-874",
-	"windows-1250": "Windows-1250",
-	"windows-1251": "Windows-1251",
-	"windows-1252": "Windows-1252",
-	"windows-1253": "Windows-1253",
-	"windows-1254": "Windows-1254",
-	"windows-1255": "Windows-1255",
-	"windows-1256": "Windows-1256",
-	"windows-1257": "Windows-1257",
-	"windows-1258": "Windows-1258",
-}
-
-// mailboxes formats every mailbox of every occurrence as "Name <address>",
-// or the part that is present. A mailbox with only an Exchange "/O=..."
-// address has no SMTP address in mailparse's Address, so it is written as
-// its display name alone, as earlier versions did.
-func mailboxes(lists []mailparse.AddressList) []string {
-	var out []string
-	for _, l := range lists {
-		if len(l.Mailboxes) == 0 && !l.Parsed && strings.TrimSpace(l.Raw) != "" {
-			out = append(out, foldCompat(l.Raw)) // unreadable field: kept as written
-			continue
-		}
-		for _, mb := range l.Mailboxes {
-			if s := formatMailbox(mb); s != "" {
-				out = append(out, s)
-			}
+// decodeHTMLBody converts raw HTML body bytes to a UTF-8 string.
+// The HTML body in MSG files may begin with a BOM or charset declaration.
+func decodeHTMLBody(b []byte, cpid int32) string {
+	// Check for UTF-16LE BOM (FF FE).
+	if len(b) >= 2 && b[0] == 0xFF && b[1] == 0xFE {
+		return decodeUTF16LE(b[2:])
+	}
+	// Check for UTF-8 BOM (EF BB BF).
+	if len(b) >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF {
+		return string(b[3:])
+	}
+	// Use the message codepage for String8 data, or assume UTF-8.
+	if cpid != 0 && cpid != 65001 {
+		charset := cpidToCharset(cpid)
+		if charset != "" {
+			return decodeString8(b, cpid)
 		}
 	}
-	return out
+	return string(b)
 }
 
-// formatMailbox writes "Name <addr>", or the part that is present, with the
-// rule eml-to-jsonl uses. A display name is attacker text: one that decodes
-// to "Bank <security@bank.example>" would otherwise read as a second address,
-// so a name holding any character that means something in an address is
-// written as an RFC 5322 quoted-string. (mailparse's Mailbox.String quotes
-// more — any name beyond atom characters and spaces, "Alice B." among them —
-// so the two tools' output would differ.)
-func formatMailbox(mb mailparse.Mailbox) string {
-	name, addr := strings.TrimSpace(mb.Name), strings.TrimSpace(mb.Address)
-	if name != "" && strings.ContainsAny(name, `<>@,;:"\`) {
-		name = `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(name) + `"`
+// formatName builds "Name <email>" or just the available piece.
+func formatName(name, email string) string {
+	if name != "" && email != "" {
+		return name + " <" + email + ">"
 	}
-	switch {
-	case name != "" && addr != "":
-		return name + " <" + addr + ">"
-	case addr != "":
-		return addr
+	if email != "" {
+		return email
 	}
 	return name
 }
 
-// foldCompat unfolds a header value the way earlier versions did: every line
-// trimmed and the lines joined by one space.
-func foldCompat(raw string) string {
-	lines := strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")
-	var parts []string
-	for _, l := range lines {
-		if l = strings.TrimSpace(l); l != "" {
-			parts = append(parts, l)
+// splitAddressList splits a semicolon-separated display address list.
+func splitAddressList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(s, ";") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
 		}
 	}
-	return strings.Join(parts, " ")
+	return out
 }

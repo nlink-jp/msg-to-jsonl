@@ -7,24 +7,15 @@
 
 ## 機能
 
-- `.msg` を [mailparse](https://github.com/nlink-jp/mailparse)（攻撃者が作ったメールを前提にした組織の
-  メールのパーサー）で読む — コミュニティ製の依存はない
-- ヘッダーを抽出: `from`、`to`、`cc`、`bcc`、`subject`、`date`、`message_id`、`in_reply_to`、`x_mailer`、`received`
-- Outlook が残したインターネットヘッダー（`PR_TRANSPORT_MESSAGE_HEADERS`）があればそれを使う。無ければ
-  差出人・宛先・件名・日付を MAPI プロパティから取る（`no_transport_headers` の警告つき）
-- 固定長の MAPI プロパティも読むので、`date` は送信日時か配信日時から埋まる
+- ヘッダーを抽出: `from`、`to`、`cc`、`bcc`、`subject`、`date`、`message_id`、`in_reply_to`、`x_mailer`
 - Unicode（UTF-16LE）とコードページ符号化（String8）の MAPI プロパティを扱う
 - すべてのテキストを **UTF-8** にデコードし、関係がある場合は元の文字セットを `encoding` フィールドに記録する
-- 日本語の文字セット: Shift_JIS（932）、ISO-2022-JP（50220〜50222）、EUC-JP（51932）とその他の Windows コードページ
-- SMTP アドレスを優先する。SMTP アドレスの無い Exchange の `/O=...` アドレスは表示名だけを書く
-- MAPI の受信者レコードから To/CC/BCC を構造化して分離（ヘッダーがあればヘッダーから。受信者の表にしか
-  無い Bcc は表から取り、`bcc_from_mapi` の警告を付ける）
-- アドレスに使う文字（`< > @ , ; : " \`）を含む表示名は、eml-to-jsonl と同じく引用符で囲む。符号化した
-  表示名がアドレスに見えることはない
-- 本文は `PR_BODY` と `PR_HTML`、さらに他のプロパティに無いときは圧縮 RTF の中の HTML（またはテキスト）
-- 添付ファイルのメタデータ（ファイル名、MIME タイプ、サイズ）— バイナリの内容は埋め込まない。埋め込みメッセージも並べる
-- `warnings` に、解析中に出会って回避したこと（壊れた構造、推定した文字セット、上限）を並べる
-- 入力: 標準入力、ファイル引数、ディレクトリ（ディレクトリ内のすべての `*.msg` を処理）。1 ファイル 100 MiB まで
+- 日本語の文字セットに対応: Shift_JIS（CPID 932）とその他の Windows コードページ
+- SMTP アドレスを優先し、X.400/Exchange の内部アドレスは黙って捨てる
+- MAPI の受信者レコードから To/CC/BCC を構造化して分離
+- UTF-16LE の BOM 判定とコードページ判定を伴う HTML 本文のデコード
+- 添付ファイルのメタデータ（ファイル名、MIME タイプ、サイズ）— バイナリの内容は埋め込まない
+- 入力: 標準入力、ファイル引数、ディレクトリ（ディレクトリ内のすべての `*.msg` を処理）
 - API キーもネットワークアクセスも不要 — 純粋にローカルで動くパーサー
 
 ## インストール
@@ -81,28 +72,9 @@ msg-to-jsonl --pretty message.msg
   ],
   "attachments": [
     {"filename": "report.pdf", "mime_type": "application/pdf", "size": 102400}
-  ],
-  "warnings": [
-    {"code": "no_transport_headers", "detail": "the message has no internet headers ...", "part": "msg"}
   ]
 }
 ```
-
-`warnings` は警告が無ければ省く。`code` は [mailparse の安定した警告コード](https://github.com/nlink-jp/mailparse/blob/main/warnings.go)、
-`part` は当てはまる場所（`msg`、`msg/html`、`msg/attach/0` など）。インターネットヘッダーを持たずに
-Outlook から保存された `.msg`（送信済みアイテム、下書き）には必ず `no_transport_headers` が付き、`received` は無い。
-
-### 本文
-
-`.msg` は同じ本文を最大 3 回持ちうる: `PR_BODY`（text/plain）、`PR_HTML`（text/html）、そして圧縮 RTF
-（中に包まれた HTML かテキストを取り出す）。RTF 由来の本文は、他のプロパティが出していない種類のときだけ
-出力する — 典型は HTML を RTF の中にだけ持つ HTML メール — ので、同じ本文は繰り返さない。text/plain を
-text/html より前に置く。
-
-### 上限
-
-100 MiB を超えるファイルはエラーにする。デコード後のデータ（本文、添付のバイト列、展開した RTF）は
-1 ファイルあたり 200 MiB まで。超えた分の後のストリームは読まず、`decoded_limit` の警告を付ける。
 
 ## フラグ
 

@@ -8,72 +8,53 @@ pipeline without format conversion.
 
 ## MSG file format
 
-MSG files are Compound File Binary (MS-CFB) containers. Inside, the message is a set of MAPI
-properties (MS-OXMSG): variable-length values in streams named `__substg1.0_PPPPTTTT` (`PPPP` the
-property ID, `TTTT` the type, in hex), and fixed-length values (times, integers, booleans) in the
-`__properties_version1.0` stream of each object. Recipients are sub-storages
-`__recip_version1.0_#XXXXXXXX`, attachments `__attach_version1.0_#XXXXXXXX`; an embedded message
-is a storage inside its attachment.
+MSG files are OLE2 Compound File Binary Format (CFBF) containers.
+Inside the container, email data is stored as MAPI properties — streams named
+`__substg1.0_PPPPTTTT` where `PPPP` is the property ID (hex) and `TTTT` is the type (hex).
+
+Recipients are stored in sub-storages named `__recip_version1.0_#XXXXXXXX`.
+Attachments are in `__attach_version1.0_#XXXXXXXX`.
 
 ## Parsing pipeline
 
 ```
 []byte (file content)
-  ├─ mailparse.ParseMSG()       — compound file, MAPI properties, headers, bodies,
-  │                               attachments, embedded messages, warnings
-  └─ buildEmail()               — maps mailparse.Message onto the eml-to-jsonl schema
+  └─ mscfb.New()               — OLE2 compound file parsing
+       └─ loadDocument()        — stream collection by scope
+            ├─ root mapiProps   — message-level properties
+            ├─ []mapiProps      — per-recipient properties
+            └─ []mapiProps      — per-attachment properties
+                 └─ buildEmail() — assembles Email struct
+                      ├─ headers from root props
+                      ├─ To/CC/BCC from recipient storages
+                      ├─ body from PR_BODY / PR_HTML
+                      └─ attachments from attachment storages
 ```
 
-Reading the container is mailparse's job (github.com/nlink-jp/mailparse, lib-series); this tool
-only chooses what goes into each JSON field. It reads no MAPI property itself.
+## MAPI property types
 
-## Headers and identity
-
-When the message holds the internet headers Outlook kept (`PR_TRANSPORT_MESSAGE_HEADERS`), mailparse
-reads `from`, `to`, `cc`, `bcc`, `subject`, `message_id`, `date` and `in_reply_to` from them, and
-this tool takes `x_mailer` and `received` from the same header block. A Bcc that only the recipient
-table holds (the sender's copy) is added from the table with a `bcc_from_mapi` warning, and a table
-recipient the headers do not name is reported as `mapi_header_mismatch`. Without headers, mailparse
-fills the identity fields from MAPI properties (`in_reply_to` from `PidTagInReplyToId`) and warns
-`no_transport_headers`; with no recipient objects either, `to`/`cc`/`bcc` come from Outlook's display
-lists, names only, with a `recipient_type` warning.
-
-`date` is RFC 3339: the Date header's own offset, or UTC for a MAPI time (submit time first, then
-delivery time). A Date header that does not parse is written as it stands, as eml-to-jsonl does.
-
-`received` lists every Received field in order, each line trimmed and the lines joined by one space.
+| Type code | Name | Go handling |
+|-----------|------|-------------|
+| `001F` | PT_UNICODE | UTF-16LE → UTF-8 via `unicode/utf16` |
+| `001E` | PT_STRING8 | codepage → UTF-8 via `golang.org/x/text` |
+| `0040` | PT_SYSTIME | Windows FILETIME → `time.Time` |
+| `0003` | PT_LONG | `binary.LittleEndian.Uint32` |
+| `0102` | PT_BINARY | raw `[]byte` |
 
 ## Address handling
 
-Every mailbox is written as `Name <address>`, or whichever part is present. A display name holding
-`<`, `>`, `@`, `,`, `;`, `:`, `"` or `\` is written as an RFC 5322 quoted-string, the rule eml-to-jsonl
-uses, so a name that decodes to `Bank <security@bank.example>` stays a name. mailparse parses header
-addresses before decoding display names (so an encoded display name cannot inject an address), and
-for MAPI mailboxes puts the SMTP address in `Address` — never an Exchange `/O=...` distinguished
-name. A mailbox with only such a name is therefore written as its display name alone.
+Outlook can store addresses in two formats:
+- **SMTP** (`PR_SENDER_SMTP_ADDRESS`, `PR_SMTP_ADDRESS`): standard email address — always preferred.
+- **X.400** (`PR_SENDER_EMAIL_ADDRESS`, `PR_EMAIL_ADDRESS` with addr-type `EX`): internal Exchange
+  routing address like `/O=CONTOSO/OU=...`. These are discarded silently.
 
-## Bodies
-
-`PR_BODY` becomes text/plain and `PR_HTML` text/html. mailparse also returns the body inside the
-compressed RTF (`PR_RTF_COMPRESSED`): the encapsulated HTML or text, or the visible text of plain
-RTF. That body is output only when no other property supplied its media type, so an HTML message
-whose HTML exists only in the RTF gets its HTML, and a message holding both does not repeat it.
+`PR_TRANSPORT_MESSAGE_HEADERS` (the original SMTP headers, when present) is parsed for `X-Mailer`.
 
 ## Encoding field
 
-The original charset of the first body that was not Unicode (`Shift_JIS`, `ISO-2022-JP`, `EUC-JP`,
-`Windows-1252`, ...). Omitted for Unicode properties and UTF-8 or ASCII text. mailparse decodes 8-bit
-strings with `PidTagMessageCodepage` and bodies with `PidTagInternetCodepage` (MS-OXCMSG).
-
-## Warnings
-
-`warnings` carries mailparse's warnings for the top message (code, detail, part) and is omitted
-when empty. Nested messages' own warnings are not included.
-
-## Limits
-
-100 MiB of input per file (larger files are an error), 200 MiB of decoded data per file. mailparse's
-other defaults apply (nesting depth 3, 1,000 parts).
+Set only when String8 (PT_STRING8) body properties are present with a non-UTF-8 code page.
+For modern Outlook (2007+) which stores strings as Unicode, the field is omitted.
+Code page is read from `PR_INTERNET_CPID` (0x3FDE).
 
 ## Schema compatibility with eml-to-jsonl
 

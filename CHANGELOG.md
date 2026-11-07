@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 
+## [Unreleased]
+
+### Reverted
+
+- The move to nlink-jp/mailparse (v0.5.0) is undone: the code is back to
+  what it was before it, reading .msg with mscfb again. Four tools were
+  moved separately and came out inconsistent; the move will be redone for
+  all of them together.
+
 ## [0.5.0] - 2026-11-07
 
 ### Changed
