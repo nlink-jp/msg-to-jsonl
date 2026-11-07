@@ -4,16 +4,15 @@
 
 | Package | Version | Purpose | Why not in-house |
 |---------|---------|---------|-----------------|
-| `github.com/richardlehane/mscfb` | v1.0.6 | OLE2 Compound File Binary Format parsing (reading MSG container structure) | The CFBF specification is complex (sector chains, FAT, mini-FAT, directory trees). A correct implementation is several hundred lines; mscfb is a focused, tested Go library for this format. |
-| `golang.org/x/text` | v0.35.0 | Charset conversion for String8 MAPI properties (Shift_JIS, GBK, Windows codepages) | Same rationale as eml-to-jsonl: canonical Go charset library maintained by the Go team. |
+| `github.com/nlink-jp/mailparse` | v0.2.0 | Reads the `.msg` file: the compound file (its `cfb` package, written from MS-CFB), MAPI properties (MS-OXMSG), code pages, compressed RTF, warnings | It is in-house: the organization's shared mail parser (lib-series). Replaces the community packages `github.com/richardlehane/mscfb` and `msoleps` used before v0.5.0. |
+| `golang.org/x/text` | v0.35.0 | Charset conversion (indirect, through mailparse) | Canonical Go charset library maintained by the Go team. |
+| `golang.org/x/net` | v0.52.0 | HTML `<meta charset>` detection (indirect, through mailparse) | Maintained by the Go team. |
 
 ## Standard library packages used
 
 | Package | Purpose |
 |---------|---------|
-| `encoding/binary` | Little-endian integer decoding for MAPI property values |
-| `unicode/utf16` | UTF-16LE decoding for PT_UNICODE MAPI properties |
-| `encoding/hex` | Stream name parsing (`__substg1.0_PPPPTTTT`) |
+| `encoding/binary`, `unicode/utf16` | UTF-16LE decoding of the few root properties read beside mailparse |
 | `encoding/json` | JSONL output |
 | `path/filepath` | Directory globbing |
 

@@ -8,6 +8,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **`.msg` files are read with [mailparse](https://github.com/nlink-jp/mailparse) v0.2.0**, the
+  organization's mail parser, instead of an in-tool reader on the community packages
+  `github.com/richardlehane/mscfb` and `msoleps`, which are no longer dependencies. Output changes:
+  - `date` is filled: fixed-length MAPI properties (`__properties_version1.0`) are read now, so the
+    submit or delivery time is found. It was always empty for real Outlook files.
+  - With internet headers (`PR_TRANSPORT_MESSAGE_HEADERS`), `from`, `to`, `cc`, `bcc`, `subject`,
+    `message_id` and `date` come from those headers (as eml-to-jsonl reads them), not from MAPI
+    properties. A Bcc known only to the recipient table (the sender's copy) is still output, from
+    that table, with a `bcc_from_mapi` warning; a table recipient the headers do not name is reported
+    as `mapi_header_mismatch`. Addresses are parsed before display names are decoded, so a comma in
+    a quoted name no longer splits a mailbox.
+  - A display name holding `<`, `>`, `@`, `,`, `;`, `:`, `"` or `\` is written as an RFC 5322
+    quoted-string (`"Alice, Sales" <alice@example.com>`), as eml-to-jsonl writes it, so a name that
+    decodes to an address cannot pass for one.
+  - A message with neither recipient objects nor headers still gets `to`/`cc`/`bcc` from Outlook's
+    display lists (names only), now with a `recipient_type` warning.
+  - A From field with several mailboxes is written as one comma-separated `from`.
+  - Code pages 50220–50222 (ISO-2022-JP), 51932 (EUC-JP) and other code pages mailparse knows are
+    decoded, and `encoding` names them; `encoding` now also reports a codepage-encoded HTML body.
+  - A body found only in the compressed RTF (an HTML message whose HTML exists only there) is output.
+  - Embedded-message attachments are listed (`application/vnd.ms-outlook`, size 0) instead of
+    dropped, and their own attachments no longer mix into the outer message's.
+  - Files over 100 MiB are refused with an error; decoded data is bounded at 200 MiB per file.
+
+### Added
+
+- **`warnings`**: what the parse met and worked around — `no_transport_headers`, `bcc_from_mapi`,
+  `mapi_header_mismatch`, `recipient_type`, a damaged compound file, a guessed charset, a limit — as
+  `{code, detail, part}` with mailparse's stable codes. Omitted when there are none.
+
 ### Fixed
 
 - **`make verify-release` now fails closed.** Its last block chained unzip, the
